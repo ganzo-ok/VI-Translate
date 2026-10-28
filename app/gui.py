@@ -35,7 +35,7 @@ if str(APP_ROOT) not in sys.path:
     sys.path.insert(0, str(APP_ROOT))
 
 from app.errors import Failure, describe_failure, report_text  # noqa: E402
-from app.i18n import UI_LANGUAGES, set_ui_language, t, ui_language  # noqa: E402
+from app.i18n import UI_LANGUAGES, set_ui_language, system_ui_language, t, ui_language  # noqa: E402
 from app.icons import (  # noqa: E402
     BADGE_FILLS,
     BADGE_SIZE,
@@ -697,7 +697,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.ui_font = UI_FONT if has_fonts else FALLBACK_UI_FONT
         self.mono_font = MONO_FONT if has_fonts else FALLBACK_MONO_FONT
         self.settings = load_settings()
-        set_ui_language(self.settings.get("ui_language"))
+        # A language picked in the menu wins; until then, follow the system.
+        set_ui_language(self.settings.get("ui_language") or system_ui_language())
 
         self.title(APP_TITLE)
         self.minsize(700, 600)

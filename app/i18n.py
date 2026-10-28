@@ -9,7 +9,12 @@ test instead of showing a key to a user.
 
 from __future__ import annotations
 
-UI_LANGUAGES = {"vi": "Tiếng Việt", "en": "English"}
+import locale
+import os
+import subprocess
+import sys
+
+UI_LANGUAGES = {"vi": "Tiếng Việt", "en": "English", "it": "Italiano"}
 DEFAULT_UI_LANGUAGE = "vi"
 
 _VI: dict[str, str] = {
@@ -426,7 +431,220 @@ _EN: dict[str, str] = {
     "E-MEM-06.advice": "Close other apps, or translate a large file in smaller parts.",
 }
 
-CATALOGS: dict[str, dict[str, str]] = {"vi": _VI, "en": _EN}
+_IT: dict[str, str] = {
+    "app.tagline": "Traduci PDF, mantieni l'impaginazione",
+    "window.progress": "{percent}% · PDF Translate",
+    "drop.prompt": "Trascina qui file PDF o una cartella",
+    "drop.hint": "Le traduzioni vengono salvate nella cartella translated, accanto a ogni file",
+    "drop.pick_files": "Scegli file",
+    "drop.pick_folder": "Scegli cartella",
+    "controls.target": "Traduci in",
+    "controls.ocr": "Pagine scansionate",
+    "controls.ocr_hint": (
+        "OCR sperimentale: tabelle, formule e figure non gestibili in sicurezza restano invariate."
+    ),
+    "controls.bilingual": "Copia bilingue",
+    "controls.bilingual_hint.side-by-side": (
+        "Copia bilingue: crea anche -dual.pdf, ogni pagina originale a sinistra della sua traduzione."
+    ),
+    "controls.bilingual_hint.alternating": (
+        "Copia bilingue: crea anche -dual.pdf, ogni pagina originale seguita dalla sua traduzione."
+    ),
+    "controls.bilingual_hint.layers": (
+        "Copia bilingue: crea anche -dual.pdf; attiva il livello Original nel pannello Livelli "
+        "del lettore PDF per vedere l'originale."
+    ),
+    "controls.overwrite": "Sovrascrivi le traduzioni precedenti",
+    "controls.google_browser": "Google tramite browser (apre la verifica quando serve)",
+    "controls.translate": "Traduci",
+    "controls.translate_one": "Traduci 1 file",
+    "controls.translate_many": "Traduci {count} file",
+    "controls.translating": "Traduzione in corso…",
+    "controls.resume": "Riprendi",
+    "ocr.off": "OCR disattivato",
+    "ocr.standard": "Automatico",
+    "ocr.enhanced": "Avanzato (lento)",
+    "bilingual.off": "Nessuna",
+    "bilingual.side-by-side": "Pagine affiancate",
+    "bilingual.alternating": "Pagine alternate",
+    "bilingual.layers": "Originale su livello nascosto",
+    "queue.title": "Coda",
+    "queue.title_count": "Coda ({count})",
+    "queue.clear": "Svuota",
+    "queue.add_files": "Aggiungi file",
+    "queue.add_folder": "Aggiungi cartella",
+    "status.empty": "Nessun file",
+    "status.queued": "{count} file in coda",
+    "output.open_folder": "Apri cartella dei risultati",
+    "status.nothing_left": "Nient'altro da tradurre",
+    "status.preparing_pages": "Preparazione di {pages} pagine…",
+    "status.preparing": "Preparazione…",
+    "status.paused_verification": "In pausa — la parte già tradotta viene conservata",
+    "status.translating_page": "Traduzione di {name} · pagina {done}/{total}",
+    "verification.title": "Google richiede una verifica",
+    "verification.show": "Mostra la finestra di Google",
+    "common.later": "Più tardi",
+    "common.close": "Chiudi",
+    "health.title": "Installazione incompleta",
+    "health.missing": (
+        "Mancano: {modules}. Di solito la causa è un antivirus che ha rimosso un file "
+        "o un'estrazione incompleta. {reinstall}."
+    ),
+    "health.reinstall_dmg": "Reinstalla dal file .dmg",
+    "health.reinstall_zip": (
+        "Estrai di nuovo TUTTO il file .zip e aggiungi un'eccezione dell'antivirus per la "
+        "cartella dell'app"
+    ),
+    "update.available": "● Nuova versione {tag}",
+    "update.downloading": "↓ Download di {tag}…",
+    "update.progress": "↓ Download di {tag} — {percent}%",
+    "update.ready": "● Installa {tag} e riavvia",
+    "update.busy": "Traduzione in corso — l'aggiornamento si installa alla fine",
+    "update.helper_failed": "Impossibile avviare l'aggiornamento — scaricalo manualmente",
+    "update.dialog_title": "Installa aggiornamento",
+    "update.downloaded": "La versione {tag} è stata scaricata",
+    "update.dialog_body": "L'app si chiude, installa l'aggiornamento e si riapre. Ci vogliono circa 10 secondi.",
+    "update.install": "Installa e riavvia",
+    "close.title": "Traduzione in corso",
+    "close.heading": "Chiudere durante la traduzione?",
+    "close.body": (
+        "Il file in traduzione si interrompe. I segmenti già tradotti restano nella cache, "
+        "quindi la prossima traduzione sarà più veloce."
+    ),
+    "close.quit": "Chiudi",
+    "close.keep": "Continua a tradurre",
+    "failure.title": "Dettagli dell'errore",
+    "failure.copy": "Copia rapporto",
+    "failure.copied": "Copiato",
+    "failure.open_log": "Apri file di log",
+    "failure.webview2": "WebView2 di riserva",
+    "row.needs_verification": "Verifica",
+    "row.verification_open": "La finestra di Google è aperta. Completa il CAPTCHA e l'app riprende da sola.",
+    "row.translating": "In traduzione",
+    "row.done": "Tradotto",
+    "row.open": "Apri",
+    "row.reveal": "Cartella",
+    "row.dual": "Bilingue",
+    "row.details": "Dettagli",
+    "info.pages_one": "1 pagina",
+    "info.pages_many": "{count} pagine",
+    "number.decimal": ",",
+    "stage.preparing": "Preparazione",
+    "stage.ocr": "Riconoscimento del testo (OCR)",
+    "stage.translating": "Analisi dell'impaginazione e traduzione",
+    "stage.layout": "Analisi dell'impaginazione",
+    "stage.request": "In attesa della traduzione di Google",
+    "stage.pacing": "Pausa tra le richieste a Google",
+    "stage.verification": "Completa il CAPTCHA nella finestra di Google",
+    "stage.verified": "Verifica Google completata — la traduzione riprende",
+    "stage.waiting": "Connessione persa — nuovo tentativo in attesa",
+    "stage.saving": "Scrittura del PDF",
+    "stage.bilingual": "Creazione della copia bilingue",
+    "stage.other": "Elaborazione",
+    "stage.page": " · pagina {done}/{total}",
+    "summary.completed": "Completati {completed}/{total} file",
+    "summary.partial": " · {count} con parti non tradotte",
+    "summary.failed": " · {count} non riusciti",
+    "summary.paused": "In pausa · La parte già tradotta è salvata",
+    "summary.waiting": " · {count} in attesa",
+    "outcome.done": "Fatto — {details}",
+    "outcome.untranslated": "{count} segmenti non tradotti",
+    "outcome.kept": " ({causes}; la parte tradotta viene conservata per la prossima volta)",
+    "outcome.scan_pages": "pagine scansionate lasciate invariate: {pages}",
+    "outcome.ocr_kept": "l'OCR ha lasciato invariate {count} aree o pagine non sicure",
+    "outcome.bilingual_failed": "impossibile creare la copia bilingue",
+    "service.RateLimitedError": (
+        "Google sta temporaneamente rifiutando le richieste da questa connessione; "
+        "non si sa quando terminerà, riprova più tardi"
+    ),
+    "service.ServiceUnavailableError": "Google Traduttore non risponde; controlla la connessione e riprova",
+    "report.title": "PDF Translate - rapporto di errore",
+    "report.time": "Ora       : {value}",
+    "report.version": "Versione  : {value}",
+    "report.system": "Sistema   : {value}",
+    "report.python": "Python    : {value}",
+    "report.file": "File      : {value}",
+    "report.code": "Codice    : {value}",
+    "report.details": "Dettagli tecnici:",
+    "report.log": "Log completo: {value}",
+    "E-UNK-99.summary": "Errore sconosciuto",
+    "E-UNK-99.advice": "Invia il rapporto qui sotto allo sviluppatore per ricevere assistenza.",
+    "E-VERIFY-01.summary": "Verifica Google rimandata",
+    "E-VERIFY-01.advice": (
+        "La coda è in pausa come hai scelto. La parte già tradotta viene conservata. "
+        "Scegli Riprendi quando sei pronto a completare la verifica."
+    ),
+    "E-BROWSER-01.summary": "Impossibile aprire la finestra di verifica di Google",
+    "E-BROWSER-01.advice": (
+        "Estrai l'app per intero, chiudi la finestra di Google della traduzione precedente e "
+        "riprova. L'app cerca Chrome, Edge, Brave, Cốc Cốc o Firefox installati. Su Windows, "
+        "WebView2 Runtime è la soluzione di riserva se nessun browser è utilizzabile. "
+        "La parte già tradotta resta nella cache."
+    ),
+    "E-NET-08.summary": "Google rifiuta le richieste da questa connessione",
+    "E-NET-08.advice": (
+        "La coda è in pausa. Le traduzioni riuscite sono salvate. "
+        "Scegli Riprendi più tardi per riprovare; non si sa quando Google toglierà il blocco. "
+        "Non serve riprovare di continuo."
+    ),
+    "E-NET-09.summary": "Il servizio di traduzione non risponde o nega l'accesso",
+    "E-NET-09.advice": (
+        "La coda è in pausa. Controlla la connessione, poi scegli Riprendi. "
+        "Le traduzioni riuscite sono salvate."
+    ),
+    "E-OCR-07.summary": "L'OCR non è riuscito a elaborare la pagina scansionata in sicurezza",
+    "E-OCR-07.advice": (
+        "L'app ha lasciato la pagina invariata per non danneggiare tabelle, formule o figure. "
+        "Prova la modalità OCR Avanzato (lento); se non funziona, usa un PDF con livello di "
+        "testo o invia questo rapporto."
+    ),
+    "E-OUT-11.summary": "Impossibile salvare il risultato",
+    "E-OUT-11.advice": (
+        "Chiudi il PDF tradotto se è aperto in un lettore PDF, poi traduci di nuovo. Se non "
+        "funziona, consenti PDF Translate nell'antivirus o nella protezione ransomware "
+        "(Sicurezza di Windows → Protezione ransomware), oppure copia il file sorgente in "
+        "un'altra cartella e traducilo da lì."
+    ),
+    "E-MODEL-10.summary": "Il modello di analisi dell'impaginazione non funziona su questo computer",
+    "E-MODEL-10.advice": (
+        "L'app è già passata alla CPU ma l'errore persiste. Aggiorna all'ultima versione, "
+        "riavvia il computer e traduci di nuovo; se non funziona, invia questo rapporto "
+        "allo sviluppatore."
+    ),
+    "E-CORE-01.summary": "Manca una libreria interna dell'app",
+    "E-CORE-01.advice": (
+        "Estrai TUTTA la cartella ed esegui l'app dalla cartella estratta "
+        "(non dall'interno del file .zip), e aggiungi un'eccezione nell'antivirus. "
+        "Se non funziona, invia questo rapporto allo sviluppatore."
+    ),
+    "E-OUT-05.summary": "Esiste già una traduzione",
+    "E-OUT-05.advice": (
+        'Spunta "Sovrascrivi le traduzioni precedenti" e traduci di nuovo, oppure elimina il '
+        "vecchio file nella cartella translated."
+    ),
+    "E-PDF-02.summary": "La struttura del PDF è danneggiata",
+    "E-PDF-02.advice": (
+        "Il file è danneggiato in modo irreparabile. Aprilo in un lettore PDF e usa "
+        '"Stampa in PDF" per crearne una copia pulita, poi traduci quella copia.'
+    ),
+    "E-PDF-01.summary": "Il file non è un PDF valido",
+    "E-PDF-01.advice": "Controlla il file: deve essere un vero PDF e trovarsi ancora dove era.",
+    "E-PDF-03.summary": "Il PDF contiene solo immagini scansionate",
+    "E-PDF-03.advice": (
+        "Attiva l'OCR: imposta Pagine scansionate → Automatico e traduci di nuovo. Tabelle, "
+        "formule e figure non gestibili in sicurezza restano invariate e il risultato viene "
+        "indicato come tradotto in parte."
+    ),
+    "E-NET-04.summary": "Impossibile raggiungere il servizio di traduzione",
+    "E-NET-04.advice": (
+        "Controlla la rete o la VPN e traduci di nuovo. I segmenti già tradotti restano "
+        "nella cache, quindi il prossimo tentativo sarà più veloce."
+    ),
+    "E-MEM-06.summary": "Memoria insufficiente per questo file",
+    "E-MEM-06.advice": "Chiudi altre app, oppure traduci un file grande in parti più piccole.",
+}
+
+CATALOGS: dict[str, dict[str, str]] = {"vi": _VI, "en": _EN, "it": _IT}
 
 _language = DEFAULT_UI_LANGUAGE
 
@@ -440,6 +658,50 @@ def set_ui_language(code: str | None) -> str:
 
 def ui_language() -> str:
     return _language
+
+
+def _system_locale() -> str | None:
+    """The operating system's display language as a locale name, e.g. ``it_IT``."""
+    if sys.platform == "win32":
+        try:
+            import ctypes
+
+            lcid = ctypes.windll.kernel32.GetUserDefaultUILanguage()
+            if lcid in locale.windows_locale:
+                return locale.windows_locale[lcid]
+        except (AttributeError, OSError):
+            pass
+    elif sys.platform == "darwin":
+        # A Finder-launched app gets no LANG, so ask the system preferences.
+        try:
+            result = subprocess.run(
+                ["defaults", "read", "-g", "AppleLocale"],
+                capture_output=True, text=True, timeout=2, check=False,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return result.stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            pass
+    for variable in ("LC_ALL", "LC_MESSAGES", "LANG", "LANGUAGE"):
+        if os.environ.get(variable):
+            return os.environ[variable]
+    try:
+        return locale.getlocale()[0]
+    except ValueError:
+        return None
+
+
+def system_ui_language(system_locale: str | None = None) -> str:
+    """The interface language matching the system, for a first start.
+
+    A system language the app has no catalog for gets English: far more of
+    those users read it than Vietnamese.
+    """
+    name = system_locale if system_locale is not None else _system_locale()
+    code = (name or "").replace("-", "_").split("_")[0].split(".")[0].lower()
+    # Windows' own locale names spell the language out: "Italian_Italy.1252".
+    code = {"italian": "it", "vietnamese": "vi", "english": "en"}.get(code, code)
+    return code if code in CATALOGS else "en"
 
 
 def t(key: str, **values: object) -> str:

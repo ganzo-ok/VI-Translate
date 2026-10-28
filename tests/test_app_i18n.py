@@ -10,6 +10,7 @@ from app.i18n import (
     DEFAULT_UI_LANGUAGE,
     UI_LANGUAGES,
     set_ui_language,
+    system_ui_language,
     t,
     ui_language,
 )
@@ -66,6 +67,17 @@ class CatalogTests(unittest.TestCase):
         for expected in ("error report", "Error code", "E-CORE-01", "pdf-translate.log"):
             with self.subTest(expected=expected):
                 self.assertIn(expected, report)
+
+    def test_a_first_start_follows_the_system_language(self):
+        for system, expected in (
+            ("it_IT", "it"), ("it-CH", "it"), ("Italian_Italy.1252", "it"),
+            ("vi_VN.UTF-8", "vi"), ("en_US", "en"), ("de_DE", "en"), ("", "en"),
+        ):
+            with self.subTest(system=system):
+                self.assertEqual(system_ui_language(system), expected)
+
+    def test_the_system_language_can_be_read_on_this_machine(self):
+        self.assertIn(system_ui_language(), CATALOGS)
 
     def test_the_default_stays_vietnamese(self):
         failure = describe_failure(ImportError("pikepdf._core failed"))
