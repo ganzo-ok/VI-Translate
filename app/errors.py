@@ -40,6 +40,8 @@ class Failure:
 # cause wins. A failure matches a code when any of its markers appears in the
 # chain's type names or messages; each code's words live in app/i18n.py.
 _RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("E-DEEPL-01", ("DeepLKeyError",)),
+    ("E-DEEPL-02", ("DeepLQuotaError",)),
     ("E-VERIFY-01", ("VerificationDeferredError",)),
     ("E-BROWSER-01", ("BrowserRuntimeError",)),
     ("E-NET-08", ("RateLimitedError",)),

@@ -187,6 +187,20 @@ wrapped lines.
 
 ## Translation Service
 
+**This fork (ganzo-ok/VI-Translate) departs from the rules below by the
+owner's explicit decision.** On 2026-10-28 the `/m` page refused this owner's
+network on the first request while `translate.googleapis.com/translate_a/single`
+(`client=gtx`) answered, so the Requests transport now uses the API endpoint
+with its own pace (`ApiRequestPace`, 1 s) and its own block record
+(`google-api-block.json`). A refusal is waited out `BLOCK_RETRY_WAITS`
+(30 s, 90 s) before `NetworkBlock` records it. The browser transport still
+opens `/m`, the page a person can verify, and is off by default in the GUI.
+With a DeepL key (`--deepl-key`, `DEEPL_AUTH_KEY`, or the GUI field saved in
+settings) `GoogleTranslator.fallback` sends whatever Google refused to
+`DeepLTranslator` (official API, markers as XML tags, prose escaped), and the
+pre-run cooldown check is skipped. `deepl` is also an engine of its own.
+E-DEEPL-01 is a refused key, E-DEEPL-02 a spent quota.
+
 Google's free `/m` endpoint is meant for people and blocks a network that uses
 it like a batch service: a 302 to `www.google.com/sorry/`, HTTP 429, a CAPTCHA
 page, no `Retry-After`. Recovery time is unknown; do not promise the app's

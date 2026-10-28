@@ -40,6 +40,8 @@ _VI: dict[str, str] = {
     ),
     "controls.overwrite": "Ghi đè file đã dịch trước đó",
     "controls.google_browser": "Google qua trình duyệt (tự chọn, tự mở xác minh)",
+    "controls.deepl_key": "Khoá DeepL (dự phòng)",
+    "controls.deepl_key_hint": "Không bắt buộc: dùng DeepL khi Google từ chối",
     "controls.translate": "Dịch",
     "controls.translate_one": "Dịch 1 file",
     "controls.translate_many": "Dịch {count} file",
@@ -122,6 +124,8 @@ _VI: dict[str, str] = {
     "stage.saving": "Đang xuất PDF",
     "stage.bilingual": "Đang tạo bản song ngữ",
     "stage.other": "Đang xử lý",
+    "stage.throttled": "Google đang hạn chế yêu cầu — sẽ thử lại sau ít phút",
+    "stage.fallback": "Google từ chối — đang dịch tiếp bằng DeepL",
     "stage.page": " · trang {done}/{total}",
     "summary.completed": "Hoàn thành {completed}/{total} file",
     "summary.partial": " · {count} file còn phần chưa dịch",
@@ -150,6 +154,16 @@ _VI: dict[str, str] = {
     "report.log": "Log đầy đủ: {value}",
     "E-UNK-99.summary": "Lỗi không xác định",
     "E-UNK-99.advice": "Hãy gửi báo cáo bên dưới cho nhà phát triển để được hỗ trợ.",
+    "E-DEEPL-01.summary": "DeepL không chấp nhận khoá",
+    "E-DEEPL-01.advice": (
+        "Kiểm tra lại khoá DeepL: chép nguyên khoá từ trang tài khoản DeepL "
+        "(khoá miễn phí kết thúc bằng :fx) rồi dịch lại."
+    ),
+    "E-DEEPL-02.summary": "Đã dùng hết số ký tự DeepL của tháng này",
+    "E-DEEPL-02.advice": (
+        "Gói DeepL miễn phí cho 500.000 ký tự mỗi tháng. Chờ đến kỳ sau, hoặc thử lại "
+        "bằng Google khi Google không còn từ chối."
+    ),
     "E-VERIFY-01.summary": "Đã để xác minh Google sau",
     "E-VERIFY-01.advice": (
         "Đợt dịch đã tạm dừng theo lựa chọn của bạn. Phần đã dịch được giữ để dùng lại. "
@@ -246,6 +260,8 @@ _EN: dict[str, str] = {
     ),
     "controls.overwrite": "Overwrite earlier translations",
     "controls.google_browser": "Google through a browser (opens verification when needed)",
+    "controls.deepl_key": "DeepL key (fallback)",
+    "controls.deepl_key_hint": "Optional: DeepL takes over when Google refuses",
     "controls.translate": "Translate",
     "controls.translate_one": "Translate 1 file",
     "controls.translate_many": "Translate {count} files",
@@ -328,6 +344,8 @@ _EN: dict[str, str] = {
     "stage.saving": "Writing the PDF",
     "stage.bilingual": "Building the bilingual copy",
     "stage.other": "Working",
+    "stage.throttled": "Google is limiting requests — trying again shortly",
+    "stage.fallback": "Google refused — continuing with DeepL",
     "stage.page": " · page {done}/{total}",
     "summary.completed": "Finished {completed}/{total} file(s)",
     "summary.partial": " · {count} with untranslated parts",
@@ -356,6 +374,16 @@ _EN: dict[str, str] = {
     "report.log": "Full log: {value}",
     "E-UNK-99.summary": "Unknown error",
     "E-UNK-99.advice": "Send the report below to the developer for help.",
+    "E-DEEPL-01.summary": "DeepL refused the key",
+    "E-DEEPL-01.advice": (
+        "Check the DeepL key: copy it whole from your DeepL account page "
+        "(free keys end in :fx), then translate again."
+    ),
+    "E-DEEPL-02.summary": "This month's DeepL characters are used up",
+    "E-DEEPL-02.advice": (
+        "The free DeepL plan allows 500,000 characters a month. Wait for the next period, "
+        "or try Google again once it stops refusing."
+    ),
     "E-VERIFY-01.summary": "Google verification put off",
     "E-VERIFY-01.advice": (
         "The batch is paused as you chose. What is translated is kept for later. "
@@ -456,6 +484,8 @@ _IT: dict[str, str] = {
     ),
     "controls.overwrite": "Sovrascrivi le traduzioni precedenti",
     "controls.google_browser": "Google tramite browser (apre la verifica quando serve)",
+    "controls.deepl_key": "Chiave DeepL (scorta)",
+    "controls.deepl_key_hint": "Facoltativa: DeepL subentra quando Google rifiuta",
     "controls.translate": "Traduci",
     "controls.translate_one": "Traduci 1 file",
     "controls.translate_many": "Traduci {count} file",
@@ -541,6 +571,8 @@ _IT: dict[str, str] = {
     "stage.saving": "Scrittura del PDF",
     "stage.bilingual": "Creazione della copia bilingue",
     "stage.other": "Elaborazione",
+    "stage.throttled": "Google sta limitando le richieste — nuovo tentativo a breve",
+    "stage.fallback": "Google ha rifiutato — continuo con DeepL",
     "stage.page": " · pagina {done}/{total}",
     "summary.completed": "Completati {completed}/{total} file",
     "summary.partial": " · {count} con parti non tradotte",
@@ -569,6 +601,16 @@ _IT: dict[str, str] = {
     "report.log": "Log completo: {value}",
     "E-UNK-99.summary": "Errore sconosciuto",
     "E-UNK-99.advice": "Invia il rapporto qui sotto allo sviluppatore per ricevere assistenza.",
+    "E-DEEPL-01.summary": "DeepL ha rifiutato la chiave",
+    "E-DEEPL-01.advice": (
+        "Controlla la chiave DeepL: copiala per intero dalla pagina del tuo account DeepL "
+        "(le chiavi gratuite finiscono con :fx), poi traduci di nuovo."
+    ),
+    "E-DEEPL-02.summary": "I caratteri DeepL di questo mese sono esauriti",
+    "E-DEEPL-02.advice": (
+        "Il piano DeepL gratuito permette 500.000 caratteri al mese. Aspetta il periodo "
+        "successivo, oppure riprova con Google quando smette di rifiutare."
+    ),
     "E-VERIFY-01.summary": "Verifica Google rimandata",
     "E-VERIFY-01.advice": (
         "La coda è in pausa come hai scelto. La parte già tradotta viene conservata. "

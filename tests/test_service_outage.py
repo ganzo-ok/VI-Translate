@@ -87,6 +87,8 @@ def translator_answering(
     translator.pace = RequestPace(clock=clock.clock, sleep=clock.sleep)
     translator.block = block or NetworkBlock(clock=clock.clock)
     translator.sleep = clock.sleep
+    # The first refusal is final here; the waits before it are tested on their own.
+    translator.block_retry_waits = ()
     google = FakeGoogle(clock, answer)
     translator.session.get = google
     return translator, clock, google

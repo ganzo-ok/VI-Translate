@@ -40,7 +40,7 @@ TARGET_LANGUAGES = frozenset(
     }
 )
 
-ENGINES = ("google", "handoff")
+ENGINES = ("google", "deepl", "handoff")
 OCR_MODES = ("off", "standard", "enhanced")
 # Off by default: the mono file is the product, and a bilingual copy of a
 # textbook is a second file of about the same size again.
@@ -195,6 +195,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--google-browser", action="store_true",
         help="Use a Google browser session with user-completed verification on Windows or macOS",
+    )
+    parser.add_argument(
+        "--deepl-key",
+        default=os.environ.get("DEEPL_AUTH_KEY"),
+        help="DeepL API key (or DEEPL_AUTH_KEY): the deepl engine's key, and the "
+        "google engine's fallback for what Google refuses",
     )
     parser.add_argument(
         "--ocr",
@@ -434,6 +440,7 @@ def translate_pdf(
     ocr: str = "off",
     google_browser: bool = False,
     bilingual: str = "off",
+    deepl_key: str | None = None,
     on_progress: Callable[[int, int], None] | None = None,
     on_status: Callable[[str, int, int], None] | None = None,
 ) -> Translation:
@@ -449,6 +456,10 @@ def translate_pdf(
         if sys.platform not in ("win32", "darwin") or engine != "google":
             raise TranslationError("Google browser mode requires the Windows or macOS desktop Google engine")
         envs["google_browser"] = True
+    if deepl_key and deepl_key.strip():
+        envs["deepl_key"] = deepl_key.strip()
+    elif engine == "deepl":
+        raise TranslationError("The deepl engine needs a DeepL API key (--deepl-key or DEEPL_AUTH_KEY)")
 
     destination: Path | None = None
     destination_dir: Path | None = None
@@ -469,12 +480,13 @@ def translate_pdf(
                     "Pass --overwrite only with replacement authorization."
                 )
 
-    if engine == "google" and not google_browser:
-        from pdf2zh.translator import GOOGLE_BLOCK, RateLimitedError
+    # With a DeepL key, a Google cooldown only means DeepL does the work.
+    if engine == "google" and not google_browser and "deepl_key" not in envs:
+        from pdf2zh.translator import GOOGLE_API_BLOCK, RateLimitedError
 
         # No OCR/model work while a known service cooldown is active.
         try:
-            GOOGLE_BLOCK.check_available()
+            GOOGLE_API_BLOCK.check_available()
         except RateLimitedError as error:
             raise TranslationError(
                 "Google Translate is temporarily paused after a network refusal; "
@@ -762,6 +774,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             emit_segments=args.emit_segments,
             ocr=args.ocr,
             bilingual=args.bilingual,
+            deepl_key=args.deepl_key,
             **({"google_browser": True} if args.google_browser else {}),
         )
     except TranslationError as error:

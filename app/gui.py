@@ -166,6 +166,7 @@ def bilingual_names() -> dict[str, str]:
 STAGES = (
     "preparing", "ocr", "translating", "layout", "request", "pacing",
     "verification", "verified", "waiting", "saving", "bilingual",
+    "throttled", "fallback",
 )
 
 
@@ -775,7 +776,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         overwrite = bool(self.overwrite.get())
         google_browser = bool(self.google_browser.get())
         set_ui_language(code)
-        save_settings({"ui_language": code})
+        # The rebuilt field reads the key back from the settings.
+        save_settings({"ui_language": code, "deepl_key": self.deepl_key.get().strip()})
         self._rebuild(choices, overwrite, google_browser)
 
     def _rebuild(self, choices: tuple[str, str, str], overwrite: bool, google_browser: bool) -> None:
@@ -797,8 +799,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self._show_hints()
         if overwrite:
             self.overwrite.select()
-        if not google_browser:
-            self.google_browser.deselect()
+        if google_browser:
+            self.google_browser.select()
 
         for index, path in enumerate(self.files):
             row = self._new_row(path, index)
@@ -1068,8 +1070,24 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             row=4, column=0, columnspan=3, padx=GAP, pady=(12, 0 if browser else 14), sticky="w"
         )
         if browser:
-            self.google_browser.grid(row=5, column=0, columnspan=3, padx=GAP, pady=(8, 14), sticky="w")
-            self.google_browser.select()
+            # Off by default in this fork: the browser opens Google's /m page,
+            # which refuses networks the API endpoint still serves.
+            self.google_browser.grid(row=5, column=0, columnspan=3, padx=GAP, pady=(8, 0), sticky="w")
+
+        # DeepL takes over whatever Google refuses, once the user gives a key.
+        ctk.CTkLabel(
+            card, text=t("controls.deepl_key"), anchor="w", height=16,
+            font=self.font(12), text_color=MUTED,
+        ).grid(row=6, column=0, padx=(GAP, 6), pady=(12, 14), sticky="w")
+        self.deepl_key = ctk.CTkEntry(
+            card, height=30, corner_radius=8, border_width=1, border_color=CARD_BORDER,
+            fg_color=FIELD, text_color=TEXT, font=self.font(12), show="•",
+            placeholder_text=t("controls.deepl_key_hint"),
+        )
+        self.deepl_key.grid(row=6, column=1, columnspan=2, padx=(6, GAP), pady=(12, 14), sticky="ew")
+        saved_key = self.settings.get("deepl_key", "")
+        if saved_key:
+            self.deepl_key.insert(0, saved_key)
 
     def _show_hints(self) -> None:
         _, ocr, bilingual = self._choices()
@@ -1395,7 +1413,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         state = "disabled" if busy else "normal"
         for widget in (
             self.language, self.ocr, self.bilingual, self.overwrite, self.google_browser,
-            self.clear_button, self.ui_language_menu,
+            self.deepl_key, self.clear_button, self.ui_language_menu,
         ):
             widget.configure(state=state)
         for row in self.rows.values():
@@ -1606,7 +1624,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
         language, ocr, bilingual = self._choices()
         google_browser = sys.platform in ("win32", "darwin") and bool(self.google_browser.get())
-        save_settings({"target_language": language, "bilingual": bilingual})
+        deepl_key = self.deepl_key.get().strip()
+        save_settings({"target_language": language, "bilingual": bilingual, "deepl_key": deepl_key})
 
         for path in pending:
             # Waiting again, so a retried file does not show its last error.
@@ -1628,7 +1647,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.batch_done, self.batch_total = 0, len(pending)
         self.worker = threading.Thread(
             target=self._run,
-            args=(pending, language, overwrite, ocr, google_browser, bilingual),
+            args=(pending, language, overwrite, ocr, google_browser, bilingual, deepl_key),
             daemon=True,
         )
         self.worker.start()
@@ -1657,6 +1676,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         ocr: str,
         google_browser: bool = False,
         bilingual: str = DEFAULT_BILINGUAL,
+        deepl_key: str = "",
     ) -> None:
         for index, path in enumerate(files, 1):
             self.events.put(("status", path, "running", "", None))
@@ -1680,6 +1700,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
                         on_status=stage,
                         ocr=ocr,
                         bilingual=bilingual,
+                        deepl_key=deepl_key or None,
                         **browser_options,
                     )
                 state, detail = translation_outcome(result)
@@ -1691,7 +1712,9 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
                 # One unreadable or already-translated file must not stop the batch.
                 failure = describe_failure(error)
                 state = "skipped" if failure.code == "E-OUT-05" else "failed"
-                if failure.code in ("E-NET-08", "E-NET-09", "E-BROWSER-01", "E-VERIFY-01"):
+                if failure.code in (
+                    "E-NET-08", "E-NET-09", "E-BROWSER-01", "E-VERIFY-01", "E-DEEPL-01", "E-DEEPL-02",
+                ):
                     state = "paused"
                 log = self._log_failure(destination, path, error) if state in ("failed", "paused") else None
                 self.failures[path] = (failure, log)

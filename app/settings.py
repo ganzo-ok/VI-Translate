@@ -1,7 +1,8 @@
 """Remember the few choices a user makes once rather than per batch.
 
-Only the interface language, the target language and the bilingual layout are
-kept. OCR is deliberately not: it is slow and turns a scanned book into
+Only the interface language, the target language, the bilingual layout and the
+DeepL key are kept. The key stays in the user's own profile folder, in plain
+text, the way the DeepL tools themselves keep it. OCR is deliberately not: it is slow and turns a scanned book into
 thousands of Google requests, so it stays a choice made for each batch.
 
 The file lives beside the updater log, outside the install folder, so an update
@@ -17,7 +18,7 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 
-SETTINGS_KEYS = ("ui_language", "target_language", "bilingual")
+SETTINGS_KEYS = ("ui_language", "target_language", "bilingual", "deepl_key")
 
 
 def settings_path() -> Path:

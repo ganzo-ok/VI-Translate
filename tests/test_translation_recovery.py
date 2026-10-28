@@ -115,7 +115,7 @@ class TranslationRecoveryTests(unittest.TestCase):
             source = Path(directory) / "scan.pdf"
             source.write_bytes(b"%PDF-1.7\n")
             with (
-                patch("pdf2zh.translator.GOOGLE_BLOCK", block),
+                patch("pdf2zh.translator.GOOGLE_API_BLOCK", block),
                 patch("pdf2zh.ocr.prepare_ocr_pdf") as ocr,
                 patch("scripts.translate_pdf._run_engine") as core,
             ):
@@ -153,7 +153,7 @@ class TranslationRecoveryTests(unittest.TestCase):
             previous = output / "book-vi.pdf"
             previous.write_bytes(b"previous user output")
             with (
-                patch("pdf2zh.translator.GOOGLE_BLOCK", NetworkBlock()),
+                patch("pdf2zh.translator.GOOGLE_API_BLOCK", NetworkBlock()),
                 patch("scripts.translate_pdf._run_engine", side_effect=RateLimitedError("blocked")),
             ):
                 with self.assertRaises(TranslationError):

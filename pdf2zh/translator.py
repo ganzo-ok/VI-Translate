@@ -95,6 +95,14 @@ class InvalidResponseError(RuntimeError):
     """A successful HTTP response without usable translated text."""
 
 
+class DeepLKeyError(ServiceUnavailableError):
+    """DeepL refused the authentication key: missing, mistyped or revoked."""
+
+
+class DeepLQuotaError(ServiceUnavailableError):
+    """The DeepL account has used up its characters for this billing period."""
+
+
 # Sending these again repeats a verdict, or a wait the whole document already paid.
 UNRETRYABLE_ERRORS = (
     SegmentTooLongError,
@@ -338,6 +346,28 @@ GOOGLE_BLOCK = NetworkBlock(
 GOOGLE_PACE = RequestPace()
 
 
+class ApiRequestPace(RequestPace):
+    """The pace for Google's API endpoint, which answers a program as a program.
+
+    The /m page is a page for people and a gap of five seconds kept it open
+    longest. The API endpoint was still answering from a network the /m page
+    had refused, so it gets a shorter gap of its own.
+    """
+
+    GAP = 1.0
+
+
+# The /m page and the API endpoint are refused separately: a block of one says
+# nothing about the other, so each keeps its own record and its own pace.
+GOOGLE_API_BLOCK = NetworkBlock(
+    os.path.join(os.path.expanduser("~"), ".cache", "pdf2zh", "google-api-block.json")
+)
+GOOGLE_API_PACE = ApiRequestPace()
+
+GOOGLE_API_ENDPOINT = "https://translate.googleapis.com/translate_a/single"
+GOOGLE_MOBILE_ENDPOINT = "https://translate.google.com/m"
+
+
 def is_google_block(response: requests.Response) -> bool:
     """Whether Google answered with its verdict on the network, not a translation."""
     if response.status_code == 429:
@@ -345,9 +375,31 @@ def is_google_block(response: requests.Response) -> bool:
     if urlparse(response.url or "").path.startswith("/sorry/"):
         return True
     body = response.text.lower()
-    return not BATCH_RESULT_PATTERN.search(response.text) and (
+    return not has_result(response.text) and (
         "our systems have detected unusual traffic" in body or "g-recaptcha" in body
     )
+
+
+def has_result(page: str) -> bool:
+    """Whether an answer carries a translation, from either Google endpoint."""
+    return _api_text(page) is not None or BATCH_RESULT_PATTERN.search(page) is not None
+
+
+def _api_text(page: str) -> str | None:
+    """The translation in an API answer, or None when the page is not one.
+
+    The API splits the text into sentences, ``[[["Ciao.", "Hello.", ...], ...]]``,
+    and keeps the line breaks inside them, so joining the pieces gives the
+    whole text back with its lines intact.
+    """
+    if not page.lstrip().startswith("["):
+        return None
+    try:
+        data = json.loads(page)
+        pieces = data[0]
+        return "".join(piece[0] for piece in pieces if piece and isinstance(piece[0], str))
+    except (ValueError, TypeError, IndexError, KeyError):
+        return None
 
 
 BATCH_RESULT_PATTERN = re.compile(
@@ -359,10 +411,12 @@ LINE_BREAK_PATTERN = re.compile("[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]")
 
 def result_lines(page: str) -> list[str]:
     """The non-empty translated lines of an answer, whether broken by newline or <br>."""
-    match = BATCH_RESULT_PATTERN.search(page)
-    if match is None:
-        raise InvalidResponseError("Google Translate response did not contain a translation result")
-    text = html.unescape(re.sub(r"(?i)<br\s*/?>", "\n", match.group(1)))
+    text = _api_text(page)
+    if text is None:
+        match = BATCH_RESULT_PATTERN.search(page)
+        if match is None:
+            raise InvalidResponseError("Google Translate response did not contain a translation result")
+        text = html.unescape(re.sub(r"(?i)<br\s*/?>", "\n", match.group(1)))
     lines = (remove_control_characters(line).strip() for line in text.splitlines())
     result = [line for line in lines if line]
     if not result:
@@ -508,7 +562,18 @@ class GoogleTranslator(BaseTranslator):
     of requests, and the retries kept knocking on a network already blocked.
     A page's segments now travel together, one request at a time, and a
     refusal stops requests instead of repeating them.
+
+    This fork sends to the API endpoint (translate.googleapis.com) instead:
+    it answered from a network the /m page refused on its very first request.
+    A refusal is now waited out a couple of times before it is believed, the
+    way 0.2.3 kept a slow run alive, and when a DeepL key is given the rest of
+    the document goes to DeepL instead of being left in the source language.
+    The browser transport still opens the /m page, the one a person can verify.
     """
+
+    # Waits before asking again after a refusal; the refusal is final only
+    # once these have passed.
+    BLOCK_RETRY_WAITS: tuple[float, ...] = (30.0, 90.0)
 
     name = "google"
     lang_map: ClassVar[dict[str, str]] = {"zh": "zh-CN"}
@@ -546,7 +611,7 @@ class GoogleTranslator(BaseTranslator):
             **kwargs,
         )
         self.session = requests.Session()
-        self.endpoint = "https://translate.google.com/m"
+        self.endpoint = GOOGLE_API_ENDPOINT
         self.headers = {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -558,9 +623,17 @@ class GoogleTranslator(BaseTranslator):
         self.outage = OutageBackoff()
         # Shared by every translator in the process, and the block also by the
         # next process: they describe this network, not this document.
-        self.pace = GOOGLE_PACE
-        self.block = GOOGLE_BLOCK
+        self.pace = GOOGLE_API_PACE
+        self.block = GOOGLE_API_BLOCK
+        self.block_retry_waits = self.BLOCK_RETRY_WAITS
         self.sleep: Callable[[float], None] = time.sleep
+        # Takes over the segments Google refuses, when the user gave a key.
+        self.fallback: BaseTranslator | None = None
+        if envs and envs.get("deepl_key"):
+            self.fallback = DeepLTranslator(
+                lang_in, lang_out, ignore_cache=ignore_cache, envs=envs,
+            )
+        self._fallback_announced = False
         self._batch_hits = 0
         self._batch_misses = 0
         self._batch_failures = 0
@@ -574,9 +647,17 @@ class GoogleTranslator(BaseTranslator):
                 lambda: self._status("verification"),
                 on_verified=lambda: self._status("verified"),
             )
+            # A person can verify only the /m page, at its own slower pace.
+            self.endpoint = GOOGLE_MOBILE_ENDPOINT
+            self.pace = GOOGLE_PACE
             # A user-verifiable browser has its own session. The Requests
             # cooldown is neither cleared nor reused for this transport.
             self.block = NetworkBlock()
+
+    def _params(self, text: str) -> dict[str, str]:
+        if self.endpoint == GOOGLE_API_ENDPOINT:
+            return {"client": "gtx", "sl": self.lang_in, "tl": self.lang_out, "dt": "t", "q": text}
+        return {"tl": self.lang_out, "sl": self.lang_in, "q": text}
 
     def _status(self, stage: str) -> None:
         if self.on_status is not None:
@@ -618,6 +699,18 @@ class GoogleTranslator(BaseTranslator):
         self.stats["duplicates"] += len(keys) - len(set(keys))
         for batch in self._batches(waiting):
             self._translate_batch(batch, answers)
+        refused = [
+            key for key in waiting
+            if isinstance(answers[key], (RateLimitedError, ServiceUnavailableError))
+        ]
+        if refused and self.fallback is not None:
+            if not self._fallback_announced:
+                logger.warning("Google refused this network; continuing with DeepL")
+                self._fallback_announced = True
+            self._status("fallback")
+            for key, answer in zip(refused, self.fallback.translate_many(refused)):
+                answers[key] = answer
+            self.stats["fallback"] += len(refused)
         logger.info("Google translation counters: %s", dict(self.stats))
         return [answers[key] for key in keys]
 
@@ -729,10 +822,12 @@ class GoogleTranslator(BaseTranslator):
 
     def _fetch(self, text: str) -> requests.Response:
         """Send one request: paced, held back while the service is out, never into a block."""
+        refusals = 0
         while True:
             self.block.check_available()
             started = self.outage.before_request()
             failure: ServiceUnavailableError | None = None
+            refused = False
             self._status("pacing")
             with self.pace.turn():
                 # Both the last check and the refusal verdict belong inside
@@ -743,7 +838,7 @@ class GoogleTranslator(BaseTranslator):
                 try:
                     response = self.session.get(
                         self.endpoint,
-                        params={"tl": self.lang_out, "sl": self.lang_in, "q": text},
+                        params=self._params(text),
                         headers=self.headers,
                         timeout=30,
                     )
@@ -754,13 +849,22 @@ class GoogleTranslator(BaseTranslator):
                         f"Google Translate could not be reached ({type(error).__name__})"
                     )
                 if failure is None and is_google_block(response):
-                    self.block.refused(response.headers.get("Retry-After"))
                     self.stats["blocks"] += 1
-                    raise RateLimitedError(
-                        "Google Translate is refusing requests from this network (HTTP 429 or CAPTCHA)"
-                    )
-                if failure is None and response.status_code == 200 and BATCH_RESULT_PATTERN.search(response.text):
+                    if refusals >= len(self.block_retry_waits):
+                        self.block.refused(response.headers.get("Retry-After"))
+                        raise RateLimitedError(
+                            "Google Translate is refusing requests from this network (HTTP 429 or CAPTCHA)"
+                        )
+                    refused = True
+                if failure is None and response.status_code == 200 and has_result(response.text):
                     self.block.answered()
+            if refused:
+                # Outside the request lock, so the wait holds back this
+                # request only; every other one waits for the pace anyway.
+                self._status("throttled")
+                self.sleep(self.block_retry_waits[refusals])
+                refusals += 1
+                continue
             if failure is not None:
                 self._status("waiting")
                 self.outage.failed(started, failure)
@@ -896,6 +1000,162 @@ def load_segment_table(path: str | None) -> dict[str, str]:
     return table
 
 
+class DeepLTranslator(BaseTranslator):
+    """Translate through the official DeepL API with the user's own key.
+
+    The fork keeps it as Google's understudy: a free DeepL account translates
+    500,000 characters a month without CAPTCHAs or network blocks. Formula and
+    style markers travel as XML tags, which DeepL keeps in place, and every
+    other character is escaped so a stray "<" in the prose cannot be read as one.
+    """
+
+    name = "deepl"
+    # DeepL names a few targets more precisely than Google does.
+    TARGETS: ClassVar[dict[str, str]] = {
+        "en": "EN-US", "pt": "PT-PT", "zh": "ZH-HANS", "zh-cn": "ZH-HANS",
+        "zh-tw": "ZH-HANT", "no": "NB", "nb": "NB",
+    }
+    BATCH_TEXTS = 50
+    BATCH_BYTES = 100_000
+    RETRY_WAITS: tuple[float, ...] = (2.0, 5.0, 15.0)
+    TAG_PATTERN = re.compile(r"</?b\d+>|</?s[123]>", re.IGNORECASE)
+
+    def __init__(
+        self,
+        lang_in: str,
+        lang_out: str,
+        model: str | None = None,
+        *,
+        ignore_cache: bool = False,
+        envs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(lang_in, lang_out, model, ignore_cache=ignore_cache, **kwargs)
+        self.key = str((envs or {}).get("deepl_key") or os.environ.get("DEEPL_AUTH_KEY") or "").strip()
+        # Free keys end in ":fx" and live on their own host.
+        host = "api-free.deepl.com" if self.key.endswith(":fx") else "api.deepl.com"
+        self.endpoint = f"https://{host}/v2/translate"
+        self.session = requests.Session()
+        self.sleep: Callable[[float], None] = time.sleep
+        self._terminal_error: ServiceUnavailableError | None = None
+        self.on_status: Callable[[str, int, int], None] | None = None
+
+    def do_translate(self, text: str) -> str:
+        answer = self._send_all([text])[0]
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    def translate_many(self, texts: Sequence[str]) -> list[str | Exception]:
+        """One answer per text: its translation, or why it could not have one."""
+        keys = [normalise_number_abbreviation(text) for text in texts]
+        answers: dict[str, str | Exception] = {}
+        waiting: list[str] = []
+        for key in dict.fromkeys(keys):
+            cached = None if self.ignore_cache else self.cache.get(key)
+            if cached is None:
+                waiting.append(key)
+            else:
+                answers[key] = cached
+        for key, answer in zip(waiting, self._send_all(waiting)):
+            answers[key] = answer
+            if isinstance(answer, str) and not self.ignore_cache:
+                self.cache.set(key, answer)
+        return [answers[key] for key in keys]
+
+    def _send_all(self, texts: Sequence[str]) -> list[str | Exception]:
+        answers: list[str | Exception] = []
+        batch: list[str] = []
+        used = 0
+        for text in texts:
+            size = len(text.encode("utf-8"))
+            if batch and (len(batch) >= self.BATCH_TEXTS or used + size > self.BATCH_BYTES):
+                answers += self._send(batch)
+                batch, used = [], 0
+            batch.append(text)
+            used += size
+        if batch:
+            answers += self._send(batch)
+        return answers
+
+    def _send(self, batch: list[str]) -> list[str | Exception]:
+        if self._terminal_error is not None:
+            return [self._terminal_error] * len(batch)
+        try:
+            translated = self._request([self._escape(text) for text in batch])
+        except ServiceUnavailableError as error:
+            self._terminal_error = error
+            return [error] * len(batch)
+        answers: list[str | Exception] = []
+        for source, line in zip(batch, translated):
+            text = self._unescape(line)
+            try:
+                restore_formula_placeholders(source, text)
+            except FormulaPlaceholderError as error:
+                answers.append(error)
+                continue
+            answers.append(text)
+        return answers
+
+    def _request(self, texts: list[str]) -> list[str]:
+        if not self.key:
+            raise DeepLKeyError("No DeepL authentication key was given")
+        body: dict[str, Any] = {
+            "text": texts,
+            "target_lang": self.TARGETS.get(self.lang_out.lower(), self.lang_out.upper()),
+            "tag_handling": "xml",
+        }
+        if self.lang_in.lower() != "auto":
+            body["source_lang"] = self.lang_in.split("-")[0].upper()
+        headers = {"Authorization": f"DeepL-Auth-Key {self.key}"}
+        for attempt in range(len(self.RETRY_WAITS) + 1):
+            try:
+                response = self.session.post(self.endpoint, json=body, headers=headers, timeout=60)
+            except (requests.ConnectionError, requests.Timeout) as error:
+                problem = f"DeepL could not be reached ({type(error).__name__})"
+            else:
+                if response.status_code == 200:
+                    try:
+                        return [item["text"] for item in response.json()["translations"]]
+                    except (ValueError, KeyError, TypeError):
+                        raise ServiceUnavailableError("DeepL answered without a translation") from None
+                if response.status_code == 403:
+                    raise DeepLKeyError("DeepL refused the authentication key (HTTP 403)")
+                if response.status_code == 456:
+                    raise DeepLQuotaError("The DeepL character quota is used up (HTTP 456)")
+                if response.status_code not in (429, 500, 502, 503, 504, 529):
+                    # Only DeepL's own message: the request body is the document's text.
+                    try:
+                        message = str(response.json().get("message", ""))
+                    except ValueError:
+                        message = ""
+                    raise ServiceUnavailableError(
+                        f"DeepL answered HTTP {response.status_code} {message}".strip()
+                    )
+                problem = f"DeepL answered HTTP {response.status_code}"
+            if attempt < len(self.RETRY_WAITS):
+                self.sleep(self.RETRY_WAITS[attempt])
+        raise ServiceUnavailableError(problem)
+
+    @classmethod
+    def _escape(cls, text: str) -> str:
+        """Escape everything but the markers, which DeepL must see as tags."""
+        parts: list[str] = []
+        last = 0
+        for match in cls.TAG_PATTERN.finditer(text):
+            parts.append(html.escape(text[last:match.start()], quote=False))
+            parts.append(match.group(0))
+            last = match.end()
+        parts.append(html.escape(text[last:], quote=False))
+        return "".join(parts)
+
+    @staticmethod
+    def _unescape(text: str) -> str:
+        # An XML parser may write an empty marker pair as a single empty tag.
+        text = re.sub(r"<b(\d+)\s*/>", r"<b\1></b\1>", text)
+        return html.unescape(text)
+
+
 class HandoffTranslator(BaseTranslator):
     """Translate from a table produced outside the pipeline, such as by an agent.
 
@@ -947,5 +1207,5 @@ class HandoffTranslator(BaseTranslator):
 
 
 ENGINES: dict[str, type[BaseTranslator]] = {
-    engine.name: engine for engine in (GoogleTranslator, HandoffTranslator)
+    engine.name: engine for engine in (GoogleTranslator, DeepLTranslator, HandoffTranslator)
 }
