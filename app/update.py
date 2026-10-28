@@ -21,8 +21,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-APP_VERSION = "0.4.0"
-REPOSITORY = "breslee1707/VI-Translate"
+APP_VERSION = "0.4.1"
+# The fork's own releases: following the original repository would replace this
+# build, Italian interface and DeepL fallback included, with the upstream one.
+REPOSITORY = "ganzo-ok/VI-Translate"
+# Off in this fork: the owner checks upstream by hand and builds a new version
+# when its changes are worth taking, so the app never looks for one itself.
+AUTO_UPDATE = False
 RELEASES_API = f"https://api.github.com/repos/{REPOSITORY}/releases/latest"
 RELEASES_PAGE = f"https://github.com/{REPOSITORY}/releases/latest"
 

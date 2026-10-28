@@ -49,6 +49,7 @@ from app.icons import (  # noqa: E402
 from app.settings import load_settings, save_settings  # noqa: E402
 from app.update import (  # noqa: E402
     APP_VERSION,
+    AUTO_UPDATE,
     RELEASES_PAGE,
     can_self_update,
     check_for_update,
@@ -749,7 +750,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         # Both background threads are staggered: each one holds the GIL long
         # enough while importing to make the freshly opened window hitch, and
         # neither is urgent enough to do that to the first second of the app.
-        self.after(2000, lambda: threading.Thread(target=self._check_for_update, daemon=True).start())
+        if AUTO_UPDATE:
+            self.after(2000, lambda: threading.Thread(target=self._check_for_update, daemon=True).start())
         # Build the inference session while the user is still picking files: it is
         # ~0.9s that every first translation used to pay right after the button
         # press, with nothing to show. Delayed, because starting it inside
