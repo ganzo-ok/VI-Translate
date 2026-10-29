@@ -144,7 +144,7 @@ class UnexplainedFailureTests(unittest.TestCase):
         def loop(_text):
             raise requests.TooManyRedirects("Exceeded 30 redirects.")
 
-        translator, _clock, google = translator_answering(loop)
+        translator, _clock, _google = translator_answering(loop)
         answers = translator.translate_many(["One.", "Two."])
         self.assertTrue(all(isinstance(answer, ServiceUnavailableError) for answer in answers))
         self.assertGreater(translator.stats["error_TooManyRedirects"], 0)

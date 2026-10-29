@@ -42,6 +42,13 @@ _VI: dict[str, str] = {
     "controls.google_browser": "Google qua trình duyệt (tự chọn, tự mở xác minh)",
     "controls.deepl_key": "Khoá DeepL (dự phòng)",
     "controls.deepl_key_hint": "Không bắt buộc: dùng DeepL khi Google từ chối",
+    "controls.engine": "Dịch vụ dịch",
+    "engine.google": "Google (DeepL dự phòng)",
+    "engine.deepl": "DeepL",
+    "engine.local": "Trên máy này (Ollama)",
+    "controls.glossary": "Bảng thuật ngữ",
+    "controls.glossary_hint": "Không bắt buộc: tệp 'thuật ngữ;bản dịch'",
+    "controls.glossary_pick": "Chọn…",
     "controls.translate": "Dịch",
     "controls.translate_one": "Dịch 1 file",
     "controls.translate_many": "Dịch {count} file",
@@ -164,6 +171,13 @@ _VI: dict[str, str] = {
         "Gói DeepL miễn phí cho 500.000 ký tự mỗi tháng. Chờ đến kỳ sau, hoặc thử lại "
         "bằng Google khi Google không còn từ chối."
     ),
+    "E-GLOSS-01.summary": "Không đọc được tệp bảng thuật ngữ",
+    "E-GLOSS-01.advice": "Kiểm tra đường dẫn của bảng thuật ngữ, hoặc xoá ô đó để dịch không dùng bảng thuật ngữ.",
+    "E-LOCAL-01.summary": "Trình dịch trên máy này không hoạt động",
+    "E-LOCAL-01.advice": (
+        "Mở Ollama (biểu tượng gần đồng hồ) và kiểm tra rằng mô hình đã được tải về, "
+        "rồi dịch lại. Phần đã dịch được giữ lại."
+    ),
     "E-VERIFY-01.summary": "Đã để xác minh Google sau",
     "E-VERIFY-01.advice": (
         "Đợt dịch đã tạm dừng theo lựa chọn của bạn. Phần đã dịch được giữ để dùng lại. "
@@ -262,6 +276,13 @@ _EN: dict[str, str] = {
     "controls.google_browser": "Google through a browser (opens verification when needed)",
     "controls.deepl_key": "DeepL key (fallback)",
     "controls.deepl_key_hint": "Optional: DeepL takes over when Google refuses",
+    "controls.engine": "Translation service",
+    "engine.google": "Google (DeepL as fallback)",
+    "engine.deepl": "DeepL",
+    "engine.local": "On this computer (Ollama)",
+    "controls.glossary": "Glossary",
+    "controls.glossary_hint": "Optional: a file of 'term;translation' lines",
+    "controls.glossary_pick": "Choose…",
     "controls.translate": "Translate",
     "controls.translate_one": "Translate 1 file",
     "controls.translate_many": "Translate {count} files",
@@ -384,6 +405,13 @@ _EN: dict[str, str] = {
         "The free DeepL plan allows 500,000 characters a month. Wait for the next period, "
         "or try Google again once it stops refusing."
     ),
+    "E-GLOSS-01.summary": "The glossary file could not be read",
+    "E-GLOSS-01.advice": "Check the glossary path, or empty that field to translate without a glossary.",
+    "E-LOCAL-01.summary": "The translator on this computer is not working",
+    "E-LOCAL-01.advice": (
+        "Start Ollama (its icon sits by the clock) and check that the model is downloaded, "
+        "then translate again. What is translated is kept."
+    ),
     "E-VERIFY-01.summary": "Google verification put off",
     "E-VERIFY-01.advice": (
         "The batch is paused as you chose. What is translated is kept for later. "
@@ -486,6 +514,13 @@ _IT: dict[str, str] = {
     "controls.google_browser": "Google tramite browser (apre la verifica quando serve)",
     "controls.deepl_key": "Chiave DeepL (scorta)",
     "controls.deepl_key_hint": "Facoltativa: DeepL subentra quando Google rifiuta",
+    "controls.engine": "Servizio di traduzione",
+    "engine.google": "Google (DeepL di scorta)",
+    "engine.deepl": "DeepL",
+    "engine.local": "Su questo PC (Ollama)",
+    "controls.glossary": "Glossario",
+    "controls.glossary_hint": "Facoltativo: file con righe 'termine;traduzione'",
+    "controls.glossary_pick": "Scegli…",
     "controls.translate": "Traduci",
     "controls.translate_one": "Traduci 1 file",
     "controls.translate_many": "Traduci {count} file",
@@ -610,6 +645,13 @@ _IT: dict[str, str] = {
     "E-DEEPL-02.advice": (
         "Il piano DeepL gratuito permette 500.000 caratteri al mese. Aspetta il periodo "
         "successivo, oppure riprova con Google quando smette di rifiutare."
+    ),
+    "E-GLOSS-01.summary": "Impossibile leggere il file del glossario",
+    "E-GLOSS-01.advice": "Controlla il percorso del glossario, oppure svuota quel campo per tradurre senza glossario.",
+    "E-LOCAL-01.summary": "Il traduttore su questo PC non funziona",
+    "E-LOCAL-01.advice": (
+        "Avvia Ollama (la sua icona è vicino all'orologio) e controlla che il modello sia "
+        "scaricato, poi traduci di nuovo. La parte già tradotta viene conservata."
     ),
     "E-VERIFY-01.summary": "Verifica Google rimandata",
     "E-VERIFY-01.advice": (

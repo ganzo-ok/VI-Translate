@@ -163,6 +163,21 @@ def bilingual_names() -> dict[str, str]:
     """Menu labels for the bilingual layouts, in the interface language."""
     return {mode: t(f"bilingual.{mode}") for mode in BILINGUAL_MODES}
 
+
+# Models offered for the local service, best first. Gemma allows commercial
+# use; Aya Expanse is licensed for non-commercial use only.
+LOCAL_MODELS = ("gemma3:12b", "aya-expanse:8b", "gemma3:4b")
+DEFAULT_LOCAL_MODEL = "gemma3:12b"
+
+# The services the window offers; "handoff" is for agents, not people.
+WINDOW_ENGINES = ("google", "deepl", "local")
+DEFAULT_ENGINE = "google"
+
+
+def engine_names() -> dict[str, str]:
+    """Menu labels for the translation services, in the interface language."""
+    return {engine: t(f"engine.{engine}") for engine in WINDOW_ENGINES}
+
 # Every stage the runner reports through on_status; each has a "stage.*" label.
 STAGES = (
     "preparing", "ocr", "translating", "layout", "request", "pacing",
@@ -778,8 +793,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         overwrite = bool(self.overwrite.get())
         google_browser = bool(self.google_browser.get())
         set_ui_language(code)
-        # The rebuilt field reads the key back from the settings.
-        save_settings({"ui_language": code, "deepl_key": self.deepl_key.get().strip()})
+        # The rebuilt fields read the service choices back from the settings.
+        save_settings({"ui_language": code, **self._service_choices()})
         self._rebuild(choices, overwrite, google_browser)
 
     def _rebuild(self, choices: tuple[str, str, str], overwrite: bool, google_browser: bool) -> None:
@@ -1076,20 +1091,73 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
             # which refuses networks the API endpoint still serves.
             self.google_browser.grid(row=5, column=0, columnspan=3, padx=GAP, pady=(8, 0), sticky="w")
 
-        # DeepL takes over whatever Google refuses, once the user gives a key.
-        ctk.CTkLabel(
-            card, text=t("controls.deepl_key"), anchor="w", height=16,
-            font=self.font(12), text_color=MUTED,
-        ).grid(row=6, column=0, padx=(GAP, 6), pady=(12, 14), sticky="w")
-        self.deepl_key = ctk.CTkEntry(
-            card, height=30, corner_radius=8, border_width=1, border_color=CARD_BORDER,
-            fg_color=FIELD, text_color=TEXT, font=self.font(12), show="•",
-            placeholder_text=t("controls.deepl_key_hint"),
+        # Which service translates: Google with DeepL behind it, DeepL alone,
+        # or a model on this computer.
+        self._field_label(card, t("controls.engine")).grid(
+            row=6, column=0, padx=(GAP, 6), pady=(12, 0), sticky="w"
         )
-        self.deepl_key.grid(row=6, column=1, columnspan=2, padx=(6, GAP), pady=(12, 14), sticky="ew")
+        self.engine = self._menu(card, list(engine_names().values()), height=30, size=12)
+        self.engine.grid(row=6, column=1, padx=(6, 6), pady=(12, 0), sticky="ew")
+        engine = self.settings.get("engine", DEFAULT_ENGINE)
+        self.engine.set(engine_names().get(engine, engine_names()[DEFAULT_ENGINE]))
+        # The model the local service uses; the others ignore it.
+        self.local_model = self._menu(card, list(LOCAL_MODELS), height=30, size=12)
+        self.local_model.grid(row=6, column=2, padx=(0, GAP), pady=(12, 0), sticky="ew")
+        self.local_model.set(self.settings.get("ollama_model", DEFAULT_LOCAL_MODEL))
+
+        # DeepL takes over whatever Google refuses, once the user gives a key.
+        self._field_label(card, t("controls.deepl_key")).grid(
+            row=7, column=0, padx=(GAP, 6), pady=(8, 0), sticky="w"
+        )
+        self.deepl_key = self._entry(card, t("controls.deepl_key_hint"), show="•")
+        self.deepl_key.grid(row=7, column=1, columnspan=2, padx=(6, GAP), pady=(8, 0), sticky="ew")
         saved_key = self.settings.get("deepl_key", "")
         if saved_key:
             self.deepl_key.insert(0, saved_key)
+
+        # The user's own terms, in a file they keep and edit.
+        self._field_label(card, t("controls.glossary")).grid(
+            row=8, column=0, padx=(GAP, 6), pady=(8, 14), sticky="w"
+        )
+        self.glossary = self._entry(card, t("controls.glossary_hint"))
+        self.glossary.grid(row=8, column=1, padx=(6, 6), pady=(8, 14), sticky="ew")
+        self.glossary_button = self._button(
+            card, t("controls.glossary_pick"), self._pick_glossary, height=30,
+        )
+        self.glossary_button.grid(row=8, column=2, padx=(0, GAP), pady=(8, 14), sticky="w")
+        saved_glossary = self.settings.get("glossary_path", "")
+        if saved_glossary:
+            self.glossary.insert(0, saved_glossary)
+
+    def _field_label(self, parent, text: str) -> ctk.CTkLabel:
+        return ctk.CTkLabel(
+            parent, text=text, anchor="w", height=16, font=self.font(12), text_color=MUTED,
+        )
+
+    def _entry(self, parent, placeholder: str, show: str = "") -> ctk.CTkEntry:
+        return ctk.CTkEntry(
+            parent, height=30, corner_radius=8, border_width=1, border_color=CARD_BORDER,
+            fg_color=FIELD, text_color=TEXT, font=self.font(12), show=show,
+            placeholder_text=placeholder,
+        )
+
+    def _pick_glossary(self) -> None:
+        chosen = ctk.filedialog.askopenfilename(
+            filetypes=[(t("controls.glossary"), "*.csv *.txt *.tsv"), ("*", "*.*")]
+        )
+        if chosen:
+            self.glossary.delete(0, "end")
+            self.glossary.insert(0, str(Path(chosen)))
+
+    def _service_choices(self) -> dict[str, str]:
+        """The service, DeepL key and glossary file the fields show, as saved settings."""
+        engines = {name: code for code, name in engine_names().items()}
+        return {
+            "engine": engines.get(self.engine.get(), DEFAULT_ENGINE),
+            "deepl_key": self.deepl_key.get().strip(),
+            "glossary_path": self.glossary.get().strip(),
+            "ollama_model": self.local_model.get(),
+        }
 
     def _show_hints(self) -> None:
         _, ocr, bilingual = self._choices()
@@ -1415,7 +1483,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         state = "disabled" if busy else "normal"
         for widget in (
             self.language, self.ocr, self.bilingual, self.overwrite, self.google_browser,
-            self.deepl_key, self.clear_button, self.ui_language_menu,
+            self.deepl_key, self.engine, self.local_model, self.glossary, self.glossary_button,
+            self.clear_button, self.ui_language_menu,
         ):
             widget.configure(state=state)
         for row in self.rows.values():
@@ -1626,8 +1695,8 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
         language, ocr, bilingual = self._choices()
         google_browser = sys.platform in ("win32", "darwin") and bool(self.google_browser.get())
-        deepl_key = self.deepl_key.get().strip()
-        save_settings({"target_language": language, "bilingual": bilingual, "deepl_key": deepl_key})
+        service = self._service_choices()
+        save_settings({"target_language": language, "bilingual": bilingual, **service})
 
         for path in pending:
             # Waiting again, so a retried file does not show its last error.
@@ -1649,7 +1718,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         self.batch_done, self.batch_total = 0, len(pending)
         self.worker = threading.Thread(
             target=self._run,
-            args=(pending, language, overwrite, ocr, google_browser, bilingual, deepl_key),
+            args=(pending, language, overwrite, ocr, google_browser, bilingual, service),
             daemon=True,
         )
         self.worker.start()
@@ -1678,8 +1747,11 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
         ocr: str,
         google_browser: bool = False,
         bilingual: str = DEFAULT_BILINGUAL,
-        deepl_key: str = "",
+        service: dict[str, str] | None = None,
     ) -> None:
+        service = service or {}
+        engine = service.get("engine") or DEFAULT_ENGINE
+        glossary = service.get("glossary_path") or ""
         for index, path in enumerate(files, 1):
             self.events.put(("status", path, "running", "", None))
             destination = path.parent / "translated"
@@ -1692,7 +1764,10 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
 
             try:
                 with google_diagnostics(destination):
-                    browser_options = {"google_browser": True} if google_browser else {}
+                    # The browser mode is a way to reach Google, so only Google uses it.
+                    browser_options = (
+                        {"google_browser": True} if google_browser and engine == "google" else {}
+                    )
                     result = translate_pdf(
                         path,
                         destination,
@@ -1702,7 +1777,10 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
                         on_status=stage,
                         ocr=ocr,
                         bilingual=bilingual,
-                        deepl_key=deepl_key or None,
+                        engine=engine,
+                        deepl_key=service.get("deepl_key") or None,
+                        glossary=Path(glossary) if glossary else None,
+                        ollama_model=service.get("ollama_model") or None,
                         **browser_options,
                     )
                 state, detail = translation_outcome(result)
@@ -1716,6 +1794,7 @@ class App(ctk.CTk, TkinterDnD.DnDWrapper):
                 state = "skipped" if failure.code == "E-OUT-05" else "failed"
                 if failure.code in (
                     "E-NET-08", "E-NET-09", "E-BROWSER-01", "E-VERIFY-01", "E-DEEPL-01", "E-DEEPL-02",
+                    "E-GLOSS-01", "E-LOCAL-01",
                 ):
                     state = "paused"
                 log = self._log_failure(destination, path, error) if state in ("failed", "paused") else None

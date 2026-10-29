@@ -40,7 +40,7 @@ TARGET_LANGUAGES = frozenset(
     }
 )
 
-ENGINES = ("google", "deepl", "handoff")
+ENGINES = ("google", "deepl", "local", "handoff")
 OCR_MODES = ("off", "standard", "enhanced")
 # Off by default: the mono file is the product, and a bilingual copy of a
 # textbook is a second file of about the same size again.
@@ -201,6 +201,14 @@ def _parser() -> argparse.ArgumentParser:
         default=os.environ.get("DEEPL_AUTH_KEY"),
         help="DeepL API key (or DEEPL_AUTH_KEY): the deepl engine's key, and the "
         "google engine's fallback for what Google refuses",
+    )
+    parser.add_argument(
+        "--glossary", type=Path,
+        help="file of 'term;translation' lines the deepl and local engines must follow",
+    )
+    parser.add_argument(
+        "--ollama-model",
+        help="local engine: the Ollama model to translate with (default gemma3:12b)",
     )
     parser.add_argument(
         "--ocr",
@@ -441,6 +449,8 @@ def translate_pdf(
     google_browser: bool = False,
     bilingual: str = "off",
     deepl_key: str | None = None,
+    glossary: Path | None = None,
+    ollama_model: str | None = None,
     on_progress: Callable[[int, int], None] | None = None,
     on_status: Callable[[str, int, int], None] | None = None,
 ) -> Translation:
@@ -460,6 +470,16 @@ def translate_pdf(
         envs["deepl_key"] = deepl_key.strip()
     elif engine == "deepl":
         raise TranslationError("The deepl engine needs a DeepL API key (--deepl-key or DEEPL_AUTH_KEY)")
+    if glossary is not None:
+        from pdf2zh.glossary import GlossaryError, load_glossary
+
+        try:
+            load_glossary(glossary)
+        except GlossaryError as error:
+            raise TranslationError(str(error)) from error
+        envs["glossary"] = str(glossary)
+    if ollama_model:
+        envs["ollama_model"] = ollama_model
 
     destination: Path | None = None
     destination_dir: Path | None = None
@@ -775,6 +795,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             ocr=args.ocr,
             bilingual=args.bilingual,
             deepl_key=args.deepl_key,
+            glossary=args.glossary,
+            ollama_model=args.ollama_model,
             **({"google_browser": True} if args.google_browser else {}),
         )
     except TranslationError as error:

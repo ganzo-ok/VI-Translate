@@ -1067,11 +1067,20 @@ class DeepLTranslator(BaseTranslator):
         self.key = str((envs or {}).get("deepl_key") or os.environ.get("DEEPL_AUTH_KEY") or "").strip()
         # Free keys end in ":fx" and live on their own host.
         host = "api-free.deepl.com" if self.key.endswith(":fx") else "api.deepl.com"
-        self.endpoint = f"https://{host}/v2/translate"
+        self.base = f"https://{host}/v2"
+        self.endpoint = f"{self.base}/translate"
         self.session = requests.Session()
         self.sleep: Callable[[float], None] = time.sleep
         self._terminal_error: ServiceUnavailableError | None = None
         self.on_status: Callable[[str, int, int], None] | None = None
+        self.glossary = _glossary_from(envs or {})
+        self._glossary_id: str | None = None
+        if self.glossary is not None:
+            # A changed glossary must not reuse translations made without it.
+            self.cache = TranslationCache(self.name, {
+                "lang_in": self.lang_in, "lang_out": self.lang_out, "model": model,
+                "glossary": self.glossary.digest,
+            })
 
     def do_translate(self, text: str) -> str:
         answer = self._send_all([text])[0]
@@ -1141,6 +1150,11 @@ class DeepLTranslator(BaseTranslator):
         if self.lang_in.lower() != "auto":
             body["source_lang"] = self.lang_in.split("-")[0].upper()
         headers = {"Authorization": f"DeepL-Auth-Key {self.key}"}
+        glossary_id = self._glossary(headers)
+        if glossary_id is not None:
+            # DeepL applies a glossary only to a stated source language.
+            body["glossary_id"] = glossary_id
+            body["source_lang"] = self._glossary_source()
         for attempt in range(len(self.RETRY_WAITS) + 1):
             try:
                 response = self.session.post(self.endpoint, json=body, headers=headers, timeout=60)
@@ -1170,9 +1184,52 @@ class DeepLTranslator(BaseTranslator):
                 self.sleep(self.RETRY_WAITS[attempt])
         raise ServiceUnavailableError(problem)
 
+    def _glossary_source(self) -> str:
+        # The glossary file names no languages: an "auto" source is taken
+        # to be English, the language the fork's glossaries are written from.
+        return "EN" if self.lang_in.lower() == "auto" else self.lang_in.split("-")[0].upper()
+
+    def _glossary(self, headers: dict[str, str]) -> str | None:
+        """The DeepL glossary for the user's file, created once and found again by name.
+
+        A glossary DeepL will not take (an unsupported language pair, a full
+        account) only costs the terms: the run goes on without it.
+        """
+        if self.glossary is None or self._glossary_id is not None:
+            return self._glossary_id
+        source = self._glossary_source()
+        target = self.lang_out.split("-")[0].upper()
+        name = f"pdftranslate-{self.glossary.digest}-{source}-{target}".lower()
+        try:
+            listing = self.session.get(f"{self.base}/glossaries", headers=headers, timeout=30)
+            if listing.status_code == 200:
+                for entry in listing.json().get("glossaries", []):
+                    if entry.get("name") == name and entry.get("ready", True):
+                        self._glossary_id = entry["glossary_id"]
+                        return self._glossary_id
+            created = self.session.post(
+                f"{self.base}/glossaries",
+                data={"name": name, "source_lang": source, "target_lang": target,
+                      "entries": self.glossary.tsv(), "entries_format": "tsv"},
+                headers=headers, timeout=30,
+            )
+            if created.status_code in (200, 201):
+                self._glossary_id = created.json()["glossary_id"]
+                return self._glossary_id
+            logger.warning("DeepL did not accept the glossary (HTTP %s)", created.status_code)
+        except (requests.RequestException, ValueError, KeyError, TypeError) as error:
+            logger.warning("DeepL glossary unavailable (%s)", type(error).__name__)
+        self.glossary = None
+        return None
+
     @classmethod
     def _escape(cls, text: str) -> str:
-        """Escape everything but the markers, which DeepL must see as tags."""
+        """Escape everything but the markers, which DeepL must see as tags.
+
+        Tabs between words become spaces too: DeepL kept them, and justified
+        paragraphs came out spread wide with its glossary terms unmatched.
+        """
+        text = words_spaced(text)
         parts: list[str] = []
         last = 0
         for match in cls.TAG_PATTERN.finditer(text):
@@ -1187,6 +1244,187 @@ class DeepLTranslator(BaseTranslator):
         # An XML parser may write an empty marker pair as a single empty tag.
         text = re.sub(r"<b(\d+)\s*/>", r"<b\1></b\1>", text)
         return html.unescape(text)
+
+
+LANGUAGE_NAMES_EN: dict[str, str] = {
+    "it": "Italian", "en": "English", "vi": "Vietnamese", "fr": "French", "de": "German",
+    "es": "Spanish", "pt": "Portuguese", "nl": "Dutch", "pl": "Polish", "ro": "Romanian",
+    "cs": "Czech", "sk": "Slovak", "sl": "Slovenian", "hr": "Croatian", "hu": "Hungarian",
+    "sv": "Swedish", "da": "Danish", "no": "Norwegian", "nb": "Norwegian", "fi": "Finnish",
+    "et": "Estonian", "lv": "Latvian", "lt": "Lithuanian", "id": "Indonesian", "ms": "Malay",
+    "tr": "Turkish", "ga": "Irish", "gl": "Galician", "is": "Icelandic", "mt": "Maltese",
+    "ca": "Catalan", "eu": "Basque", "sq": "Albanian", "af": "Afrikaans", "sw": "Swahili",
+}
+
+
+class OllamaTranslator(BaseTranslator):
+    """Translate on this computer with a language model served by Ollama.
+
+    No quota and no network block: the fork's answer to a book that Google
+    refuses and that is larger than DeepL's free month. Each segment goes on
+    its own, with the glossary terms that occur in it as rules the model must
+    follow, and an answer that loses a formula or style marker is asked for
+    once more before it is refused like any other.
+    """
+
+    name = "local"
+    DEFAULT_MODEL = "gemma3:12b"
+    DEFAULT_URL = "http://127.0.0.1:11434"
+    ATTEMPTS = 2
+
+    def __init__(
+        self,
+        lang_in: str,
+        lang_out: str,
+        model: str | None = None,
+        *,
+        ignore_cache: bool = False,
+        envs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> None:
+        envs = envs or {}
+        model = model or envs.get("ollama_model") or os.environ.get("PDF_TRANSLATE_OLLAMA_MODEL") or self.DEFAULT_MODEL
+        super().__init__(lang_in, lang_out, model, ignore_cache=ignore_cache, **kwargs)
+        self.url = (envs.get("ollama_url") or os.environ.get("OLLAMA_HOST") or self.DEFAULT_URL).rstrip("/")
+        if not self.url.startswith("http"):
+            self.url = f"http://{self.url}"
+        self.glossary = _glossary_from(envs)
+        if self.glossary is not None:
+            # A changed glossary must not reuse translations made without it.
+            self.cache = TranslationCache(self.name, {
+                "lang_in": self.lang_in, "lang_out": self.lang_out, "model": model,
+                "glossary": self.glossary.digest,
+            })
+        self.session = requests.Session()
+        self._terminal_error: ServiceUnavailableError | None = None
+        self.on_status: Callable[[str, int, int], None] | None = None
+        self.stats: Counter[str] = Counter()
+
+    def _language(self, code: str) -> str:
+        return LANGUAGE_NAMES_EN.get(code.lower().split("-")[0], code)
+
+    def _system_prompt(self, text: str) -> str:
+        source = "the source language" if self.lang_in.lower() == "auto" else self._language(self.lang_in)
+        rules = [
+            (
+                f"You are a professional technical translator. Translate the user's text from {source} "
+                f"into {self._language(self.lang_out)}."
+            ),
+            "Answer with the translation only: no notes, no quotes, no explanations.",
+            (
+                "The text is one paragraph, heading or table cell of a technical document; keep its "
+                "register and do not add or leave out anything."
+            ),
+            (
+                "Tags such as <b0></b0>, <b1></b1> or <s1>...</s1> mark formulas and styles: copy every "
+                "tag unchanged, exactly as many times and in the same order."
+            ),
+            "Keep numbers, units, codes, standard names and acronyms as they are.",
+        ]
+        terms = self.glossary.terms_in(text) if self.glossary is not None else []
+        if terms:
+            rules.append("Always translate these terms exactly like this:")
+            rules.extend(f'- "{source}" -> "{target}"' for source, target in terms)
+        return "\n".join(rules)
+
+    def do_translate(self, text: str) -> str:
+        answer = self._translate_one(text)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    def translate_many(self, texts: Sequence[str]) -> list[str | Exception]:
+        keys = [normalise_number_abbreviation(text) for text in texts]
+        answers: dict[str, str | Exception] = {}
+        for key in dict.fromkeys(keys):
+            cached = None if self.ignore_cache else self.cache.get(key)
+            if cached is not None:
+                answers[key] = cached
+                continue
+            answer = self._translate_one(key)
+            answers[key] = answer
+            if isinstance(answer, str) and not self.ignore_cache:
+                self.cache.set(key, answer)
+        logger.info("Local translation counters: %s", dict(self.stats))
+        return [answers[key] for key in keys]
+
+    def _translate_one(self, text: str) -> str | Exception:
+        if self._terminal_error is not None:
+            return self._terminal_error
+        system = self._system_prompt(text)
+        error: Exception | None = None
+        # Justified PDF text separates its words with tabs. A model copies
+        # them, and a tab is a control character the PDF cannot carry, so
+        # the words reached the page glued together.
+        prose = words_spaced(text)
+        for attempt in range(self.ATTEMPTS):
+            if attempt:
+                system += "\nYour previous answer changed the tags. Copy every tag exactly."
+            try:
+                translated = self._chat(system, prose)
+            except ServiceUnavailableError as failure:
+                self._terminal_error = failure
+                return failure
+            try:
+                restore_formula_placeholders(text, translated)
+            except FormulaPlaceholderError as failure:
+                self.stats["marker_retries"] += 1
+                error = failure
+                continue
+            return translated
+        return error or FormulaPlaceholderError("formula placeholders changed during translation")
+
+    def _chat(self, system: str, text: str) -> str:
+        self.stats["requests"] += 1
+        try:
+            response = self.session.post(
+                f"{self.url}/api/chat",
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": text},
+                    ],
+                    "stream": False,
+                    "keep_alive": "30m",
+                    "options": {"temperature": 0.1, "num_ctx": 4096},
+                },
+                timeout=600,
+            )
+        except requests.RequestException as error:
+            raise ServiceUnavailableError(
+                f"The local translator (Ollama) is not running at {self.url} ({type(error).__name__})"
+            ) from None
+        if response.status_code == 404:
+            raise ServiceUnavailableError(
+                f"The local translator has no model {self.model!r}: run 'ollama pull {self.model}'"
+            )
+        if response.status_code != 200:
+            raise ServiceUnavailableError(f"The local translator answered HTTP {response.status_code}")
+        try:
+            content = response.json()["message"]["content"]
+        except (ValueError, KeyError, TypeError):
+            raise ServiceUnavailableError("The local translator answered without a translation") from None
+        translated = remove_control_characters(words_spaced(content)).strip()
+        if not translated:
+            raise ServiceUnavailableError("The local translator returned an empty translation")
+        return translated
+
+
+def words_spaced(text: str) -> str:
+    """Tabs and line breaks between words become single spaces."""
+    return re.sub(r"[ \t\r\n\v\f]*[\t\r\n\v\f][ \t\r\n\v\f]*", " ", text)
+
+
+def _glossary_from(envs: dict[str, Any]):
+    """The glossary the run was given, read once; None without one."""
+    path = envs.get("glossary")
+    if not path:
+        return None
+    from pdf2zh.glossary import load_glossary
+
+    glossary = load_glossary(path)
+    return glossary if len(glossary) else None
 
 
 class HandoffTranslator(BaseTranslator):
@@ -1240,5 +1478,6 @@ class HandoffTranslator(BaseTranslator):
 
 
 ENGINES: dict[str, type[BaseTranslator]] = {
-    engine.name: engine for engine in (GoogleTranslator, DeepLTranslator, HandoffTranslator)
+    engine.name: engine
+    for engine in (GoogleTranslator, DeepLTranslator, OllamaTranslator, HandoffTranslator)
 }

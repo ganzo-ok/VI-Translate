@@ -18,7 +18,10 @@ import sys
 from collections.abc import Mapping
 from pathlib import Path
 
-SETTINGS_KEYS = ("ui_language", "target_language", "bilingual", "deepl_key")
+SETTINGS_KEYS = (
+    "ui_language", "target_language", "bilingual", "deepl_key", "engine", "glossary_path",
+    "ollama_model",
+)
 
 
 def settings_path() -> Path:

@@ -1,0 +1,135 @@
+# Glossario PDF Translate: una riga per termine, "termine inglese;traduzione italiana".
+# Le righe che iniziano con # sono commenti. Si può modificare con Excel o con il Blocco note.
+# Base: glossario HVAC e camere bianche (ricerca Google del 29/10/2026), rivisto.
+inglese;italiano
+# Sistemi HVAC generali
+Air Handling Unit;Unità di Trattamento Aria
+AHU;UTA
+Airflow Rate;portata d'aria
+Chiller;gruppo frigorifero
+Constant Air Volume;portata d'aria costante
+Cooling Coil;batteria di raffreddamento
+Dampers;serrande di regolazione
+Damper;serranda di regolazione
+Ductwork;canalizzazioni
+Exhaust Air;aria espulsa
+Heating Coil;batteria di riscaldamento
+Make-up Air;aria di reintegro
+Return Air;aria di ripresa
+Supply Air;aria di mandata
+Variable Air Volume;portata d'aria variabile
+# Contaminazione e filtrazione
+Airborne Particulate Matter;particolato aerodisperso
+Bioburden;carica microbica
+Cross-Contamination;contaminazione crociata
+HEPA Filter;filtro HEPA
+HEPA filters;filtri HEPA
+Molecular Contamination;contaminazione molecolare aeroportata
+Pre-filter;prefiltro
+Terminal Filter;filtro terminale
+ULPA Filter;filtro ULPA
+# Dinamica dell'aria e camere bianche
+Air Changes per Hour;ricambi d'aria orari
+Air Lock;bussola di passaggio
+Airlock;bussola di passaggio
+Anteroom;anticamera
+As-Built;as-built (come costruito)
+At-Rest;at-rest (a riposo)
+At Rest;at rest (a riposo)
+Cleanroom;camera bianca
+Cleanrooms;camere bianche
+Cleanroom Class;classe di pulizia della camera bianca
+Gowning Room;spogliatoio per vestizione
+Laminar Flow;flusso laminare
+Unidirectional Flow;flusso unidirezionale
+Pass-Through Box;passacarte
+Pressure Cascade;cascata di pressione
+Turbulent Flow;flusso turbolento
+Non-Unidirectional Flow;flusso non unidirezionale
+# Classificazioni ISPE e GMP (il documento ISPE usa "Grade" per le classi di pulizia)
+Grade 5;Grado 5
+Grade 7;Grado 7
+Grade 8;Grado 8
+Grade A;Grado A
+Grade B;Grado B
+Grade C;Grado C
+Grade D;Grado D
+Grade Description;Descrizione del grado
+Controlled Not Classified;Controllato non classificato
+In Operation;in attività
+Environmental Classification;classificazione ambientale
+# Termini visti tradotti male o a rischio nella guida ISPE HVAC (traduzione del 29/10/2026)
+Good Practice Guide;Good Practice Guide
+Baseline Guide;Baseline Guide
+Change Control;controllo delle modifiche
+Quality Change Control;controllo qualità delle modifiche
+Fresh Air;aria esterna
+Outside Air;aria esterna
+Final Air Filter System;sistema di filtrazione finale dell'aria
+Area served by the system;area servita dall'impianto
+Calibrated monitoring system;sistema di monitoraggio calibrato
+Critical Parameters;parametri critici
+Room Pressure Differentials;differenziali di pressione ambiente
+Particle Count;conteggio particellare
+Leak Tested;sottoposto a test di tenuta
+Plug Flow;flusso a pistone
+Eddies;vortici
+Supply Terminal;terminale di mandata
+Extract Point;punto di ripresa
+Dilution Ventilation;ventilazione per diluizione
+Displacement Airflow;flusso d'aria a dislocamento
+# Parametri ambientali e controllo
+Differential Pressure;pressione differenziale
+Dew Point;punto di rugiada
+Particle Counter;contatore di particelle
+Relative Humidity;umidità relativa
+Set-point;set-point
+# Standard e qualifica
+Design Qualification;Qualifica di Progetto
+Installation Qualification;Qualifica di Installazione
+Operational Qualification;Qualifica Operativa
+Performance Qualification;Qualifica delle Prestazioni
+Recovery Time;tempo di recupero
+# Automazione e monitoraggio
+Building Management System;Sistema di Gestione dell'Edificio
+Environmental Monitoring System;Sistema di Monitoraggio Ambientale
+Audit Trail;audit trail
+Continuous Monitoring;monitoraggio continuo
+Data Integrity;integrità dei dati
+Interlocking System;sistema di interblocco
+Remote Alarm;allarme remoto
+Variable Frequency Drive;variatore di frequenza
+# Componenti di distribuzione dell'aria
+Air Shower;doccia d'aria
+Bubble Tight Damper;serranda a tenuta stagna
+Fan Filter Unit;unità ventilante filtrante
+Gel Seal;tenuta a gel
+Grille;griglia
+Laminar Flow Hood;cappa a flusso laminare
+Plenum;plenum
+Swirl Diffuser;diffusore a vortice
+# Test e verifiche
+Airflow Parallelism Test;test di parallelismo del flusso d'aria
+Filter Integrity Test;test di integrità dei filtri
+Leak Testing;test di tenuta
+Smoke Test;test del fumo
+Airflow Visualization;visualizzazione dei flussi d'aria
+Velocity Profile;profilo di velocità dell'aria
+# Processi farmaceutici
+Aseptic Processing;processo asettico
+Bio-decontamination;biodecontaminazione
+Clean-in-Place;lavaggio in linea (CIP)
+Contamination Control Strategy;Strategia di Controllo delle Contaminazioni
+Containment;contenimento
+Cross-flow;flusso incrociato
+Isolator;isolatore
+Restricted Access Barrier System;sistema di barriera ad accesso limitato
+Sterilize-in-Place;sterilizzazione in linea (SIP)
+Vaporized Hydrogen Peroxide;perossido di idrogeno vaporizzato
+# Parametri energetici
+By-pass Factor;fattore di bypass
+Exfiltration;esfiltrazione
+Heat Load;carico termico
+Infiltration;infiltrazione
+Latent Heat;calore latente
+Sensible Heat;calore sensibile

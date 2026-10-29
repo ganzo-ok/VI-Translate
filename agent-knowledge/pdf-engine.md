@@ -201,6 +201,22 @@ settings) `GoogleTranslator.fallback` sends whatever Google refused to
 pre-run cooldown check is skipped. `deepl` is also an engine of its own.
 E-DEEPL-01 is a refused key, E-DEEPL-02 a spent quota.
 
+The `local` engine (`OllamaTranslator`) translates one segment per request
+through Ollama's `/api/chat` on this computer (default `gemma3:12b`; the GUI
+also offers `aya-expanse:8b`, non-commercial licence, and `gemma3:4b`).
+A user glossary (`pdf2zh/glossary.py`: `term;translation` lines, `#`
+comments, UTF-8 or cp1252) gives the local model only the terms found in each
+segment, and is uploaded once to DeepL as a named glossary (`source_lang`
+then becomes EN for an `auto` source). Either cache key carries the glossary
+digest. Justified PDF text separates words with tabs: both engines now send
+and receive spaces (`words_spaced`), since a tab is a control character that
+`remove_control_characters` deleted, gluing the words, and glossary matching
+treats any white space as a space. On an RTX 4070 Laptop (8 GB) gemma3:12b
+runs 39% on the CPU at about 13 tokens/s; aya-expanse:8b 43, gemma3:4b 74.
+A run where every Google request fails for an unexplained reason now stops
+after `UNEXPLAINED_FAILURES_ALLOWED`: a 288-page book had finished all in
+English with nothing reported.
+
 Google's free `/m` endpoint is meant for people and blocks a network that uses
 it like a batch service: a 302 to `www.google.com/sorry/`, HTTP 429, a CAPTCHA
 page, no `Retry-After`. Recovery time is unknown; do not promise the app's
