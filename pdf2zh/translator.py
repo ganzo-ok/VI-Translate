@@ -574,6 +574,10 @@ class GoogleTranslator(BaseTranslator):
     # Waits before asking again after a refusal; the refusal is final only
     # once these have passed.
     BLOCK_RETRY_WAITS: tuple[float, ...] = (30.0, 90.0)
+    # Requests in a row that failed in a way no category above explains. A
+    # 288-page book once ran to its end this way, every page left in English
+    # and nothing said, so the failure now stops the document like an outage.
+    UNEXPLAINED_FAILURES_ALLOWED = 3
 
     name = "google"
     lang_map: ClassVar[dict[str, str]] = {"zh": "zh-CN"}
@@ -634,6 +638,7 @@ class GoogleTranslator(BaseTranslator):
                 lang_in, lang_out, ignore_cache=ignore_cache, envs=envs,
             )
         self._fallback_announced = False
+        self._unexplained_failures = 0
         self._batch_hits = 0
         self._batch_misses = 0
         self._batch_failures = 0
@@ -699,9 +704,11 @@ class GoogleTranslator(BaseTranslator):
         self.stats["duplicates"] += len(keys) - len(set(keys))
         for batch in self._batches(waiting):
             self._translate_batch(batch, answers)
+        # Everything but a segment's own verdict (a ValueError) is Google's
+        # failure, and DeepL may still answer it.
         refused = [
             key for key in waiting
-            if isinstance(answers[key], (RateLimitedError, ServiceUnavailableError))
+            if isinstance(answers[key], Exception) and not isinstance(answers[key], ValueError)
         ]
         if refused and self.fallback is not None:
             if not self._fallback_announced:
@@ -762,9 +769,12 @@ class GoogleTranslator(BaseTranslator):
         except Exception as error:  # noqa: BLE001 - reported per segment by the caller
             if isinstance(error, (RateLimitedError, ServiceUnavailableError)):
                 self._terminal_error = error
+            else:
+                error = self._unexplained(error)
             for text in batch:
                 answers[text] = error
             return
+        self._unexplained_failures = 0
         self._batch_hits += 1
         self._batch_failures = 0
         self.stats["batch_hits"] += 1
@@ -787,10 +797,28 @@ class GoogleTranslator(BaseTranslator):
         except Exception as error:  # noqa: BLE001 - reported per segment by the caller
             if isinstance(error, (RateLimitedError, ServiceUnavailableError)):
                 self._terminal_error = error
+            elif not isinstance(error, ValueError):
+                # A ValueError is this segment's own verdict: too long,
+                # refused, markers lost. Anything else is the service failing.
+                return self._unexplained(error)
             return error
+        self._unexplained_failures = 0
         if not self.ignore_cache:
             self.cache.set(text, translated)
         return translated
+
+    def _unexplained(self, error: Exception) -> Exception:
+        """Count a failure no category explains; past the allowance it ends the document."""
+        self.stats[f"error_{type(error).__name__}"] += 1
+        self._unexplained_failures += 1
+        if self._unexplained_failures < self.UNEXPLAINED_FAILURES_ALLOWED:
+            return error
+        stopped = ServiceUnavailableError(
+            f"Google Translate kept failing ({type(error).__name__})"
+        )
+        stopped.__cause__ = error
+        self._terminal_error = stopped
+        return stopped
 
     def _translate_joined(self, batch: list[str]) -> list[str]:
         response = self._fetch(self.BATCH_SEPARATOR.join(batch))
@@ -842,12 +870,17 @@ class GoogleTranslator(BaseTranslator):
                         headers=self.headers,
                         timeout=30,
                     )
-                except (requests.ConnectionError, requests.Timeout) as error:
-                    # The exception text carries the request URL, which holds the
-                    # document's own words; only its kind is kept.
+                except requests.RequestException as error:
+                    # Redirect loops and undecodable answers included: none is
+                    # this segment's fault. The exception text carries the
+                    # request URL, which holds the document's own words; only
+                    # its kind is kept.
+                    self.stats[f"error_{type(error).__name__}"] += 1
                     failure = ServiceUnavailableError(
                         f"Google Translate could not be reached ({type(error).__name__})"
                     )
+                else:
+                    self.stats[f"http_{response.status_code}"] += 1
                 if failure is None and is_google_block(response):
                     self.stats["blocks"] += 1
                     if refusals >= len(self.block_retry_waits):

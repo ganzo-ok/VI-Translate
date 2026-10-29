@@ -110,6 +110,59 @@ class RefusalRetryTests(unittest.TestCase):
         self.assertEqual(len(google.sent), 3)
 
 
+class UnexplainedFailureTests(unittest.TestCase):
+    """A run once left all 288 pages in English, and said nothing, this way."""
+
+    def test_a_failure_nothing_explains_stops_the_document(self):
+        def broken(_text):
+            raise RuntimeError("answer nobody expected")
+
+        translator, _clock, google = translator_answering(broken)
+        for page in range(5):
+            answers = translator.translate_many([f"Page {page}, one.", f"Page {page}, two."])
+        self.assertTrue(all(isinstance(answer, ServiceUnavailableError) for answer in answers))
+        sent = len(google.sent)
+        translator.translate_many(["One more page."])
+        self.assertEqual(len(google.sent), sent)
+        self.assertEqual(translator.stats["error_RuntimeError"], GoogleTranslator.UNEXPLAINED_FAILURES_ALLOWED)
+
+    def test_a_success_in_between_resets_the_count(self):
+        state = {"calls": 0}
+
+        def every_other(text):
+            state["calls"] += 1
+            if state["calls"] % 4 == 0:
+                return line_by_line(text)
+            raise RuntimeError("glitch")
+
+        translator, _clock, _google = translator_answering(every_other)
+        translator.translate_many(["One."])
+        translator.translate_many(["Two."])
+        self.assertIsNone(translator._terminal_error)
+
+    def test_a_redirect_loop_is_an_outage_not_a_glitch(self):
+        def loop(_text):
+            raise requests.TooManyRedirects("Exceeded 30 redirects.")
+
+        translator, _clock, google = translator_answering(loop)
+        answers = translator.translate_many(["One.", "Two."])
+        self.assertTrue(all(isinstance(answer, ServiceUnavailableError) for answer in answers))
+        self.assertGreater(translator.stats["error_TooManyRedirects"], 0)
+
+    def test_answers_are_counted_by_status(self):
+        translator, _clock, _google = translator_answering(line_by_line)
+        translator.translate_many(["One."])
+        self.assertEqual(translator.stats["http_200"], 1)
+
+    def test_unexplained_failures_go_to_deepl(self):
+        def broken(_text):
+            raise RuntimeError("answer nobody expected")
+
+        translator, _clock, _google = translator_answering(broken)
+        translator.fallback, _session = deepl(deepl_translating)
+        self.assertEqual(translator.translate_many(["One.", "Two."]), ["it:One.", "it:Two."])
+
+
 class FallbackTests(unittest.TestCase):
     def test_what_google_refuses_goes_to_deepl(self):
         translator, _clock, google = translator_answering(lambda _text: blocked())
